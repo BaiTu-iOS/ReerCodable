@@ -4,7 +4,7 @@ set -euo pipefail
 
 mkdir -p results
 [[ $(uname -m) == arm64 ]]
-[[ $(xcodebuild -version | head -n 1) == "Xcode $CONSUMER" ]]
+[[ $(xcodebuild -version | sed -n '1p') == "Xcode $CONSUMER" ]]
 xcodebuild -version > results/toolchain.txt
 xcrun swift --version >> results/toolchain.txt
 cp plugin/manifest.json results/

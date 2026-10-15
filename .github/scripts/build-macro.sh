@@ -2,7 +2,7 @@
 set -euo pipefail
 
 [[ $(uname -m) == arm64 ]]
-[[ $(xcodebuild -version | head -n 1) == "Xcode $EXPECTED_XCODE" ]]
+[[ $(xcodebuild -version | sed -n '1p') == "Xcode $EXPECTED_XCODE" ]]
 [[ $(git -C upstream rev-parse HEAD) == "$UPSTREAM_COMMIT" ]]
 
 xcrun swift build --package-path upstream -c release --product ReerCodableMacros --traits AutoFlexibleType

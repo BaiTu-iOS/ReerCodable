@@ -25,11 +25,12 @@ Pod::Spec.new do |s|
     :always_out_of_date => '1',
     :script => <<-SCRIPT
 set -euo pipefail
+trap 'echo "error: ReerCodable macro preparation failed at line $LINENO (exit $?)" >&2' ERR
 if [[ $(uname -m) != arm64 ]]; then
   echo 'error: ReerCodable macros currently require an Apple Silicon Mac.' >&2
   exit 1
 fi
-xcode_version=$(xcodebuild -version | head -n 1 | cut -d ' ' -f 2)
+xcode_version=$(xcodebuild -version | awk 'NR == 1 {print $2}')
 case "$xcode_version" in
   26.4.1|26.5|26.6) producer="$xcode_version" ;;
   27.0) producer=26.6 ;; # Explicitly verified compatibility mapping.
