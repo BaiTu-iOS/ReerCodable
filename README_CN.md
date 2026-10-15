@@ -85,56 +85,19 @@ let package = Package(
 </details>
 
 <details>
-<summary>CocoaPods</summary>
-</br>
-<p>已停止维护 CocoaPods 集成。<strong><a href="https://github.com/reers/ReerCodable/releases/tag/1.7.5">1.7.5</a> 是最后一个 CocoaPods 版本。</strong> 新版本请迁移到 Swift Package Manager。</p>
-<p>若仍需使用 CocoaPods，请固定 <code>1.7.5</code>。由于 CocoaPods 不直接支持 Swift Macro，ReerCodable <code>1.7.5</code> 会在构建时下载预构建的二进制插件。有以下几种接入场景：</p>
+<summary>CocoaPods（BaiTu fork）</summary>
 
-<h4>1. 仅在主工程中使用</h4>
-<p>如果只在主 App 中使用 <code>@Codable</code>（不在其他 Pod 组件中使用），只需在 Podfile 中添加：</p>
-<pre><code class="ruby language-ruby">
-pod 'ReerCodable', '1.7.5'
-</code></pre>
+本 fork 恢复了 **1.8.1** 的 CocoaPods 支持。Apple Silicon 开发机可直接使用：
 
-<h4>2. 在 Pod 组件中使用</h4>
-<p>如果你的 Pod 需要使用 <code>@Codable</code> 等 ReerCodable 宏，<strong>必须</strong>在你的 podspec 中添加 <code>pod_target_xcconfig</code> 来加载宏插件二进制。这是因为 CocoaPods 不会将依赖 Pod 的构建配置自动传递给依赖方：</p>
-<pre><code class="ruby language-ruby">
-Pod::Spec.new do |s|
-  s.name             = 'YourPod'
-  s.dependency 'ReerCodable', '1.7.5'
-  # 必须添加：加载 ReerCodable 宏插件
-  s.pod_target_xcconfig = {
-    'OTHER_SWIFT_FLAGS' => '-Xfrontend -load-plugin-executable -Xfrontend ${PODS_BUILD_DIR}/ReerCodable/MacroPlugin/ReerCodableMacros#ReerCodableMacros'
-  }
-end
-</code></pre>
+```ruby
+pod 'ReerCodable', :git => 'https://github.com/BaiTu-iOS/ReerCodable.git', :branch => 'main'
+```
 
-<h4>3. 推荐：通过 Podfile 自动配置（适用于多个 Pod 组件）</h4>
-<p>如果你有多个 Pod 依赖 ReerCodable，可以在 Podfile 中添加如下 <code>post_install</code> hook，自动为所有依赖 ReerCodable 的 Pod 注入宏插件配置：</p>
-<pre><code class="ruby language-ruby">
-post_install do |installer|
-  macro_flag = '-Xfrontend -load-plugin-executable -Xfrontend ${PODS_BUILD_DIR}/ReerCodable/MacroPlugin/ReerCodableMacros#ReerCodableMacros'
-  reer_codable_dependents = Set.new
-  installer.pod_targets.each do |pod_target|
-    next if pod_target.name == 'ReerCodable'
-    has_dep = pod_target.dependent_targets.any? { |dep| dep.name == 'ReerCodable' }
-    reer_codable_dependents.add(pod_target.name) if has_dep
-  end
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      if reer_codable_dependents.include?(target.name)
-        flags = config.build_settings['OTHER_SWIFT_FLAGS'] || '$(inherited)'
-        unless flags.include?('ReerCodableMacros')
-          config.build_settings['OTHER_SWIFT_FLAGS'] = "#{flags} #{macro_flag}"
-        end
-      end
-    end
-  end
-end
-</code></pre>
+支持 Xcode 26.4.1、26.5、26.6、27.0，最低 iOS 15 / macOS 12。构建时自动下载并校验宏，默认开启 `AutoFlexibleType`。保留 Podfile.lock 固定源码 commit。未发布到公共 CocoaPods trunk；也可将根目录 podspec 发布到私有 Specs 仓库。
 
-<p><strong>⚠️ 重要提示：</strong>若在 Xcode 14+ 遇到 <code>rsync</code> 权限错误，需关闭用户脚本沙盒：</p>
-<p>在工程的 <strong>Build Settings</strong> 中搜索 <code>User Script Sandboxing</code>，将 <code>ENABLE_USER_SCRIPT_SANDBOXING</code> 设为 <code>No</code>。这可解决 Xcode 严格沙盒限制导致的 CocoaPods 脚本执行失败问题。</p>
+其他源码 Pod 内部使用宏时，仍需给该 Pod 添加加载参数，或通过工具链统一注入。详情、兼容测试矩阵及限制见 [宏制品与 CocoaPods 接入说明](MACRO_RELEASES.md)。
+
+上游官方最后一个 CocoaPods 版本仍是 1.7.5；这里的适配由 BaiTu fork 维护。
 
 </details>
 

@@ -91,56 +91,19 @@ let package = Package(
 </details>
 
 <details>
-<summary>CocoaPods</summary>
-</br>
-<p>CocoaPods support has been discontinued. <strong><a href="https://github.com/reers/ReerCodable/releases/tag/1.7.5">1.7.5</a> is the last CocoaPods release.</strong> Please migrate to Swift Package Manager for newer versions.</p>
-<p>If you must stay on CocoaPods, pin <code>1.7.5</code>. Since CocoaPods doesn't directly support Swift Macro, ReerCodable <code>1.7.5</code> downloads a prebuilt binary plugin during build. There are two integration scenarios:</p>
+<summary>CocoaPods (BaiTu fork)</summary>
 
-<h4>1. Use in Main App Only</h4>
-<p>If you only use <code>@Codable</code> in your main app (not inside other Pods), simply add to your Podfile:</p>
-<pre><code class="ruby language-ruby">
-pod 'ReerCodable', '1.7.5'
-</code></pre>
+This fork restores CocoaPods support for **1.8.1** on Apple Silicon hosts:
 
-<h4>2. Use in a Pod Component</h4>
-<p>If your Pod needs to use <code>@Codable</code> and other ReerCodable macros, you <strong>must</strong> add <code>pod_target_xcconfig</code> to load the macro plugin binary, because CocoaPods does not propagate build settings from dependencies to dependent Pods:</p>
-<pre><code class="ruby language-ruby">
-Pod::Spec.new do |s|
-  s.name             = 'YourPod'
-  s.dependency 'ReerCodable', '1.7.5'
-  # Required: load the ReerCodable macro plugin
-  s.pod_target_xcconfig = {
-    'OTHER_SWIFT_FLAGS' => '-Xfrontend -load-plugin-executable -Xfrontend ${PODS_BUILD_DIR}/ReerCodable/MacroPlugin/ReerCodableMacros#ReerCodableMacros'
-  }
-end
-</code></pre>
+```ruby
+pod 'ReerCodable', :git => 'https://github.com/BaiTu-iOS/ReerCodable.git', :branch => 'main'
+```
 
-<h4>3. Recommended: Auto-configure via Podfile (for multiple Pods)</h4>
-<p>If you have many Pods depending on ReerCodable, add this <code>post_install</code> hook to your Podfile to automatically inject the macro plugin configuration into all dependent Pods:</p>
-<pre><code class="ruby language-ruby">
-post_install do |installer|
-  macro_flag = '-Xfrontend -load-plugin-executable -Xfrontend ${PODS_BUILD_DIR}/ReerCodable/MacroPlugin/ReerCodableMacros#ReerCodableMacros'
-  reer_codable_dependents = Set.new
-  installer.pod_targets.each do |pod_target|
-    next if pod_target.name == 'ReerCodable'
-    has_dep = pod_target.dependent_targets.any? { |dep| dep.name == 'ReerCodable' }
-    reer_codable_dependents.add(pod_target.name) if has_dep
-  end
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      if reer_codable_dependents.include?(target.name)
-        flags = config.build_settings['OTHER_SWIFT_FLAGS'] || '$(inherited)'
-        unless flags.include?('ReerCodableMacros')
-          config.build_settings['OTHER_SWIFT_FLAGS'] = "#{flags} #{macro_flag}"
-        end
-      end
-    end
-  end
-end
-</code></pre>
+Supported Xcode versions: 26.4.1, 26.5, 26.6 and 27.0. Minimum deployment targets: iOS 15 / macOS 12. The build downloads and verifies the macro executable with `AutoFlexibleType` enabled. Keep Podfile.lock to pin the source commit. This specification is not published to the public CocoaPods trunk; it can also be hosted in a private Specs repository.
 
-<p><strong>⚠️ Important:</strong> If you encounter <code>rsync</code> permission errors with Xcode 14+, disable User Script Sandboxing:</p>
-<p>In your project's <strong>Build Settings</strong>, search for <code>User Script Sandboxing</code> and set <code>ENABLE_USER_SCRIPT_SANDBOXING</code> to <code>No</code>. This resolves CocoaPods script execution issues caused by Xcode's stricter sandbox restrictions.</p>
+Source Pods that use macros themselves still need the plugin loading flags, either in their own build settings or through a tooling hook. See [macro releases and CocoaPods integration](MACRO_RELEASES.md) for the compatibility matrix and limitations.
+
+The last upstream CocoaPods release remains 1.7.5; this integration is maintained by the BaiTu fork.
 
 </details>
 
