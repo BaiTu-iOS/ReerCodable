@@ -5,10 +5,10 @@ use_frameworks!
 
 target 'IntegrationTests' do
   platform :osx, '14.0'
-  pod 'ReerCodable', :path => '../..'
+  pod 'ReerCodable', :path => 'runtime'
 end
 
 target 'ModelConsumer' do
   platform :ios, '15.1'
-  pod 'ReerCodable', :path => '../..'
+  pod 'ReerCodable', :path => 'runtime'
 end

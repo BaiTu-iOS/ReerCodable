@@ -44,6 +44,20 @@ pod 'ReerCodable', :git => 'https://github.com/BaiTu-iOS/ReerCodable.git', :bran
 
 Pod 自身以及 Podfile 对应的用户 target 会获得宏加载参数；首次 Xcode 编译从本仓库 Releases 下载，校验 SHA-256、清单和架构后原子安装到构建目录。后续编译复用本地文件，切换 Xcode 或 ReerCodable 版本使用独立路径。首次下载需要访问 GitHub。`always_out_of_date` 用于每次检查实际工具链，避免 Xcode 的“未声明输出”警告。
 
-另有四组 CocoaPods 测试：每个 Xcode 执行真实 `pod install`、macOS XCTest 和 iOS Simulator Release 构建，验证自动准备及参数传递。它测试的是当前根目录 podspec（目前 1.8.1）；升级库源码时需同步更新规格版本。定时宏制品发布不会自动升级此 podspec 或业务依赖。
+另有四组 CocoaPods 测试：每个 Xcode 执行真实 `pod install`、macOS XCTest 和 iOS Simulator Release 构建，验证自动准备及参数传递。测试从根目录 podspec 模板生成对应 Release 版本的 JSON 规格，固定宏清单记录的上游源码 commit，并检出该 commit 测试；不依赖 fork 的源码是否已同步。
+
+## 自动发布到 baitu-specs
+
+12 组兼容测试与 4 组 CocoaPods 测试全部成功后，将实际测试的 `ReerCodable.podspec.json` 和 `.sha256` 上传到该版本的 Xcode 26.6 宏 Release。已有规格不可覆盖；同版本不同内容会报错。宏已构建但规格尚未通过测试时，每日检查会继续重试验证，已完整发布的版本跳过。
+
+[BaiTu-iOS/baitu-specs](https://github.com/BaiTu-iOS/baitu-specs) 每小时第 43 分钟同步这些通过验证的规格，不需要跨仓库写入 token。同步不会自动升级业务工程的 Podfile.lock。
+
+```ruby
+source 'https://github.com/BaiTu-iOS/baitu-specs.git'
+source 'https://cdn.cocoapods.org/'
+pod 'ReerCodable', '1.8.1'
+```
+
+首次使用执行 `pod install --repo-update`；未来升级版本主动运行 `pod update ReerCodable`。
 
 限制：其他源码 Pod 在自己的代码中使用宏时，也需要获得加载参数；CocoaPods 不会把依赖 Pod 的 pod_target_xcconfig 自动传给它。这部分仍由 cocoapods-publish 的依赖检测/参数注入集成负责，本仓库没有修改那个插件。

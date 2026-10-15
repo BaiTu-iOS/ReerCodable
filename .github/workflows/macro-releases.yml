@@ -24,6 +24,7 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       commit: ${{ steps.plan.outputs.commit }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      verify: ${{ steps.plan.outputs.verify }}
     steps:
       - id: plan
         env:
@@ -54,10 +55,16 @@ jobs:
               matrix=$(jq -c --arg xcode "$xcode" --arg tag "$tag" '. + [{xcode: $xcode, tag: $tag}]' <<< "$matrix")
             fi
           done
+          verify=true
+          spec_tag="macros-$version-xcode-26.6-arm64-flex-r1"
+          if jq -e --arg tag "$spec_tag" '.[][] | select(.tag_name == $tag and .draft == false) | .assets | map(.name) | (index("ReerCodable.podspec.json") != null and index("ReerCodable.podspec.json.sha256") != null)' <<< "$releases" >/dev/null; then
+            verify=false
+          fi
           {
             echo "version=$version"
             echo "commit=$commit"
             echo "matrix=$matrix"
+            echo "verify=$verify"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -126,6 +133,9 @@ jobs:
 
   compatibility:
     needs: [discover, publish]
+    if: always() && needs.discover.result == 'success' && needs.discover.outputs.verify == 'true' && (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    permissions:
+      contents: write
     uses: ./.github/workflows/macro-compatibility.yml
     with:
       version: ${{ needs.discover.outputs.version }}

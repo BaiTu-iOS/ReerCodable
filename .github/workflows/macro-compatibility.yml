@@ -94,6 +94,33 @@ jobs:
         run: command -v xcodegen || brew install xcodegen
       - name: Install CocoaPods if missing
         run: command -v pod || brew install cocoapods
+      - name: Resolve tested release source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          gh release download "macros-$VERSION-xcode-26.6-arm64-flex-r1" --repo "$REPOSITORY" --pattern manifest.json --dir source-manifest
+          commit=$(jq -r .upstream_commit source-manifest/manifest.json)
+          [[ "$commit" =~ ^[a-f0-9]{40}$ ]]
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
+        with:
+          repository: reers/ReerCodable
+          ref: ${{ steps.source.outputs.commit }}
+          path: .github/cocoapods/runtime
+          persist-credentials: false
+      - name: Render versioned podspec
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          ruby .github/scripts/test-render-podspec.rb
+          ruby .github/scripts/render-podspec.rb "$VERSION" "$SOURCE_COMMIT" > .github/cocoapods/runtime/ReerCodable.podspec.json
+          mkdir -p .github/cocoapods/results
+          cp .github/cocoapods/runtime/ReerCodable.podspec.json .github/cocoapods/results/
       - name: Generate and install CocoaPods integration project
         working-directory: .github/cocoapods
         run: |
@@ -111,6 +138,38 @@ jobs:
           name: cocoapods-${{ matrix.xcode }}
           path: .github/cocoapods/results
           retention-days: 14
+
+  publish-spec:
+    needs: [integration, cocoapods]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: cocoapods-26.6
+          path: verified
+      - name: Publish only the tested specification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tag="macros-$VERSION-xcode-26.6-arm64-flex-r1"
+          cd verified
+          sha256sum ReerCodable.podspec.json > ReerCodable.podspec.json.sha256
+          assets=$(gh release view "$tag" --repo "$REPOSITORY" --json assets --jq '.assets[].name')
+          if grep -qx 'ReerCodable.podspec.json' <<< "$assets"; then
+            gh release download "$tag" --repo "$REPOSITORY" --pattern ReerCodable.podspec.json --dir existing
+            cmp ReerCodable.podspec.json existing/ReerCodable.podspec.json
+          else
+            gh release upload "$tag" ReerCodable.podspec.json --repo "$REPOSITORY"
+          fi
+          if ! grep -qx 'ReerCodable.podspec.json.sha256' <<< "$assets"; then
+            gh release upload "$tag" ReerCodable.podspec.json.sha256 --repo "$REPOSITORY"
+          fi
 
   report:
     needs: [integration, cocoapods]
