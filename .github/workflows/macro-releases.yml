@@ -87,7 +87,7 @@ jobs:
           RELEASE_TAG: ${{ matrix.tag }}
           EXPECTED_XCODE: ${{ matrix.xcode }}
         run: bash .github/scripts/build-macro.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.tag }}
           path: dist/*
@@ -100,7 +100,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: Publish verified assets
@@ -123,3 +123,9 @@ jobs:
             gh release upload "$tag" "$directory/ReerCodableMacros.tar.gz" "$directory/manifest.json" "$directory/SHA256SUMS" --repo "$REPOSITORY" --clobber
             gh release edit "$tag" --repo "$REPOSITORY" --draft=false --latest=false
           done
+
+  compatibility:
+    needs: [discover, publish]
+    uses: ./.github/workflows/macro-compatibility.yml
+    with:
+      version: ${{ needs.discover.outputs.version }}

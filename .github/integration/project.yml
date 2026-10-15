@@ -1,0 +1,51 @@
+name: MacroIntegration
+options:
+  bundleIdPrefix: com.baitu.macrotest
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    CODE_SIGNING_ALLOWED: NO
+    GENERATE_INFOPLIST_FILE: YES
+    OTHER_SWIFT_FLAGS: '$(inherited) -load-plugin-executable $(MACRO_PLUGIN)#ReerCodableMacros'
+targets:
+  ReerMac:
+    type: framework
+    platform: macOS
+    deploymentTarget: '14.0'
+    sources: [upstream/Sources/ReerCodable]
+    settings:
+      PRODUCT_MODULE_NAME: ReerCodable
+      PRODUCT_NAME: ReerCodable
+  IntegrationTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: '14.0'
+    sources: [Tests, Models]
+    dependencies:
+      - target: ReerMac
+  ReeriOS:
+    type: framework
+    platform: iOS
+    deploymentTarget: '15.0'
+    sources: [upstream/Sources/ReerCodable]
+    settings:
+      PRODUCT_MODULE_NAME: ReerCodable
+      PRODUCT_NAME: ReerCodable
+  ModelConsumer:
+    type: framework
+    platform: iOS
+    deploymentTarget: '15.0'
+    sources: [Models]
+    dependencies:
+      - target: ReeriOS
+schemes:
+  MacIntegration:
+    build:
+      targets:
+        IntegrationTests: all
+    test:
+      targets: [IntegrationTests]
+  iOSIntegration:
+    build:
+      targets:
+        ModelConsumer: all

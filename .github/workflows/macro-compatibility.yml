@@ -1,0 +1,98 @@
+name: Test macro Xcode compatibility
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '已发布宏制品的 ReerCodable 版本'
+        type: string
+        required: true
+        default: '1.8.1'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Macro ${{ matrix.producer }} on Xcode ${{ matrix.consumer }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        producer: ['26.4.1', '26.5', '26.6']
+        consumer: ['26.4.1', '26.5', '26.6']
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.consumer }}.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Download and verify released executable
+        id: plugin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          PRODUCER: ${{ matrix.producer }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tag="macros-$VERSION-xcode-$PRODUCER-arm64-flex-r1"
+          gh release download "$tag" --repo "$REPOSITORY" --dir .github/integration/plugin
+          cd .github/integration/plugin
+          shasum -a 256 -c SHA256SUMS
+          jq -e --arg tag "$tag" '.release_tag == $tag and .architecture == "arm64" and .auto_flexible_type == true' manifest.json
+          commit=$(jq -r .upstream_commit manifest.json)
+          [[ "$commit" =~ ^[a-f0-9]{40}$ ]]
+          tar -xzf ReerCodableMacros.tar.gz
+          test -x ReerCodableMacros
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
+        with:
+          repository: reers/ReerCodable
+          ref: ${{ steps.plugin.outputs.commit }}
+          path: .github/integration/upstream
+          persist-credentials: false
+      - name: Install project generator
+        run: command -v xcodegen || brew install xcodegen
+      - name: Run real Xcode project tests and iOS build
+        working-directory: .github/integration
+        env:
+          PRODUCER: ${{ matrix.producer }}
+          CONSUMER: ${{ matrix.consumer }}
+        run: bash ../scripts/test-xcode-integration.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: compatibility-${{ matrix.producer }}-on-${{ matrix.consumer }}
+          path: .github/integration/results
+          if-no-files-found: warn
+          retention-days: 14
+
+  report:
+    needs: integration
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: compatibility-*
+          path: results
+      - name: Collect compatibility matrix
+        env:
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+        run: |
+          {
+            echo '## Downloaded macro Xcode compatibility'
+            echo "Overall result: $INTEGRATION_RESULT"
+            echo '| Macro built with | Consumer Xcode | macOS XCTest | iOS Simulator Release |'
+            echo '| --- | --- | --- | --- |'
+            cat results/*/summary.md
+          } >> "$GITHUB_STEP_SUMMARY"

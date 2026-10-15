@@ -19,3 +19,13 @@ Release 标签：`macros-<上游版本>-xcode-<Xcode版本>-arm64-flex-r1`。`r1
 工作流必须位于默认分支，fork 的 Actions 需启用。GitHub 定时运行可能延迟；公开仓库 60 天无活动时可能自动停用，需要重新启用。构建使用只读 token，发布 job 单独获得 contents:write，不需要额外密钥。
 
 首次配置后在 Actions 中手动运行验证。上游 `CI` 工作流仍独立保留，宏制品发布不依赖它的默认特性测试。
+
+## Xcode 集成兼容测试
+
+发布任务成功后自动调用 `Test macro Xcode compatibility`，也可手动指定已发布版本。无新制品、构建跳过时不会重复运行兼容测试。
+
+测试从公开 Releases 重新下载并校验宏，不重新编译宏。以三份制品 × Xcode 26.4.1、26.5、26.6 构成 9 组测试，使用真正的 .xcodeproj 编译独立运行时 framework 与消费方 target。每组执行 3 项 macOS XCTest（自动类型转换、编码往返、类型推断和默认值）以及 iOS Simulator Release 编译链接。
+
+Actions Summary 展示矩阵，Artifacts 保留日志、manifest、工具链信息和 xcresult 14 天。某组合失败不会取消其他组合。兼容测试发生在发布后，失败会使工作流失败，但不会撤回已有 Release；下载方仍应选择经过验证的精确工具链版本。未覆盖真机运行、CocoaPods 自动接入或 Xcode 27（当前矩阵未包含它）。
+
+上传与下载分别使用原生 Node.js 24 的 `actions/upload-artifact@v7` 和 `actions/download-artifact@v8`。
