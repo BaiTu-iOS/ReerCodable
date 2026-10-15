@@ -1,0 +1,7 @@
+Pods/
+*.xcodeproj/
+*.xcworkspace/
+Podfile.lock
+build-*/
+results/
+prepare-macro.sh

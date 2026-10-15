@@ -20,13 +20,13 @@ permissions:
 jobs:
   integration:
     name: Macro ${{ matrix.producer }} on Xcode ${{ matrix.consumer }}
-    runs-on: macos-26
+    runs-on: ${{ matrix.consumer == '27.0' && 'xcode-27' || 'macos-26' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         producer: ['26.4.1', '26.5', '26.6']
-        consumer: ['26.4.1', '26.5', '26.6']
+        consumer: ['26.4.1', '26.5', '26.6', '27.0']
     env:
       DEVELOPER_DIR: /Applications/Xcode_${{ matrix.consumer }}.app/Contents/Developer
     steps:
@@ -76,8 +76,44 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  cocoapods:
+    name: CocoaPods on Xcode ${{ matrix.xcode }}
+    runs-on: ${{ matrix.xcode == '27.0' && 'xcode-27' || 'macos-26' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        xcode: ['26.4.1', '26.5', '26.6', '27.0']
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install project generator
+        run: command -v xcodegen || brew install xcodegen
+      - name: Install CocoaPods if missing
+        run: command -v pod || brew install cocoapods
+      - name: Generate and install CocoaPods integration project
+        working-directory: .github/cocoapods
+        run: |
+          xcodegen generate
+          pod install
+      - name: Test downloaded macro via CocoaPods
+        working-directory: .github/cocoapods
+        run: |
+          mkdir -p results
+          xcodebuild test -workspace PodIntegration.xcworkspace -scheme MacIntegration -destination 'platform=macOS,arch=arm64' -derivedDataPath build-mac -resultBundlePath results/CocoaPods.xcresult > results/mac-test.log 2>&1
+          xcodebuild build -workspace PodIntegration.xcworkspace -scheme iOSIntegration -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath build-ios > results/ios-build.log 2>&1
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cocoapods-${{ matrix.xcode }}
+          path: .github/cocoapods/results
+          retention-days: 14
+
   report:
-    needs: integration
+    needs: [integration, cocoapods]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -88,10 +124,12 @@ jobs:
       - name: Collect compatibility matrix
         env:
           INTEGRATION_RESULT: ${{ needs.integration.result }}
+          COCOAPODS_RESULT: ${{ needs.cocoapods.result }}
         run: |
           {
             echo '## Downloaded macro Xcode compatibility'
             echo "Overall result: $INTEGRATION_RESULT"
+            echo "CocoaPods integration: $COCOAPODS_RESULT"
             echo '| Macro built with | Consumer Xcode | macOS XCTest | iOS Simulator Release |'
             echo '| --- | --- | --- | --- |'
             cat results/*/summary.md

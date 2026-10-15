@@ -24,8 +24,26 @@ Release 标签：`macros-<上游版本>-xcode-<Xcode版本>-arm64-flex-r1`。`r1
 
 发布任务成功后自动调用 `Test macro Xcode compatibility`，也可手动指定已发布版本。无新制品、构建跳过时不会重复运行兼容测试。
 
-测试从公开 Releases 重新下载并校验宏，不重新编译宏。以三份制品 × Xcode 26.4.1、26.5、26.6 构成 9 组测试，使用真正的 .xcodeproj 编译独立运行时 framework 与消费方 target。每组执行 3 项 macOS XCTest（自动类型转换、编码往返、类型推断和默认值）以及 iOS Simulator Release 编译链接。
+测试从公开 Releases 重新下载并校验宏，不重新编译宏。以三份制品 × Xcode 26.4.1、26.5、26.6、27.0 构成 12 组测试，使用真正的 .xcodeproj 编译独立运行时 framework 与消费方 target。每组执行 3 项 macOS XCTest（自动类型转换、编码往返、类型推断和默认值）以及 iOS Simulator Release 编译链接。Xcode 27.0 使用 `xcode-27` runner，其余使用 `macos-26`。
 
-Actions Summary 展示矩阵，Artifacts 保留日志、manifest、工具链信息和 xcresult 14 天。某组合失败不会取消其他组合。兼容测试发生在发布后，失败会使工作流失败，但不会撤回已有 Release；下载方仍应选择经过验证的精确工具链版本。未覆盖真机运行、CocoaPods 自动接入或 Xcode 27（当前矩阵未包含它）。
+Actions Summary 展示矩阵，Artifacts 保留日志、manifest、工具链信息和 xcresult 14 天。某组合失败不会取消其他组合。兼容测试发生在发布后，失败会使工作流失败，但不会撤回已有 Release；下载方仍应选择经过验证的精确工具链版本。未覆盖真机运行。
 
 上传与下载分别使用原生 Node.js 24 的 `actions/upload-artifact@v7` 和 `actions/download-artifact@v8`。
+
+## CocoaPods（本 fork 维护）
+
+根目录恢复了 ReerCodable 1.8.1 的 podspec。当前适配最低 iOS 15 / macOS 12，开发机须为 Apple Silicon；支持 Xcode 26.4.1、26.5、26.6、27.0。前三者下载对应工具链制品，27.0 使用经过兼容测试的 26.6 制品；其他版本明确报错。默认开启 AutoFlexibleType，无需在业务字段添加 @FlexibleType。
+
+Podfile 可以直接指定本 fork：
+
+```ruby
+pod 'ReerCodable', :git => 'https://github.com/BaiTu-iOS/ReerCodable.git', :branch => 'main'
+```
+
+生产项目应保留 Podfile.lock 固定 commit，或将本 podspec 放入私有 Specs 仓库后使用 `pod 'ReerCodable', '1.8.1'`。这里没有发布到公共 CocoaPods trunk。上游 1.8.1 tag 没有 podspec，不要对 fork 使用该旧 tag 安装。
+
+Pod 自身以及 Podfile 对应的用户 target 会获得宏加载参数；首次 Xcode 编译从本仓库 Releases 下载，校验 SHA-256、清单和架构后原子安装到构建目录。后续编译复用本地文件，切换 Xcode 或 ReerCodable 版本使用独立路径。首次下载需要访问 GitHub。`always_out_of_date` 用于每次检查实际工具链，避免 Xcode 的“未声明输出”警告。
+
+另有四组 CocoaPods 测试：每个 Xcode 执行真实 `pod install`、macOS XCTest 和 iOS Simulator Release 构建，验证自动准备及参数传递。它测试的是当前根目录 podspec（目前 1.8.1）；升级库源码时需同步更新规格版本。定时宏制品发布不会自动升级此 podspec 或业务依赖。
+
+限制：其他源码 Pod 在自己的代码中使用宏时，也需要获得加载参数；CocoaPods 不会把依赖 Pod 的 pod_target_xcconfig 自动传给它。这部分仍由 cocoapods-publish 的依赖检测/参数注入集成负责，本仓库没有修改那个插件。

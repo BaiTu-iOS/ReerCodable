@@ -1,0 +1,30 @@
+name: PodIntegration
+options:
+  bundleIdPrefix: com.baitu.macrotest
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    CODE_SIGNING_ALLOWED: NO
+    GENERATE_INFOPLIST_FILE: YES
+targets:
+  IntegrationTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: '14.0'
+    sources: [../integration/Tests, ../integration/Models]
+  ModelConsumer:
+    type: framework
+    platform: iOS
+    deploymentTarget: '15.1'
+    sources: [../integration/Models]
+schemes:
+  MacIntegration:
+    build:
+      targets:
+        IntegrationTests: all
+    test:
+      targets: [IntegrationTests]
+  iOSIntegration:
+    build:
+      targets:
+        ModelConsumer: all
