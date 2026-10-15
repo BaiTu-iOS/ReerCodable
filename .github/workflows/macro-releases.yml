@@ -1,0 +1,125 @@
+name: Build macro releases
+
+on:
+  schedule:
+    - cron: '23 1 * * *' # 每天北京时间 09:23
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '上游正式版本（留空选择 latest，例如 1.8.1）'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macro-releases
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      commit: ${{ steps.plan.outputs.commit }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint=latest
+          if [[ -n "$REQUESTED_VERSION" ]]; then
+            [[ "$REQUESTED_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+            endpoint="tags/$REQUESTED_VERSION"
+          fi
+          release=$(gh api "repos/reers/ReerCodable/releases/$endpoint")
+          jq -e '.draft == false and .prerelease == false' <<< "$release" >/dev/null
+          version=$(jq -r .tag_name <<< "$release")
+          [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          commit=$(gh api "repos/reers/ReerCodable/commits/$version" --jq .sha)
+          [[ "$commit" =~ ^[a-f0-9]{40}$ ]]
+          releases=$(gh api --paginate --slurp "repos/$REPOSITORY/releases?per_page=100")
+          matrix='[]'
+          for xcode in 26.4.1 26.5 26.6; do
+            tag="macros-$version-xcode-$xcode-arm64-flex-r1"
+            if jq -e --arg tag "$tag" '.[][] | select(.tag_name == $tag and .draft == false) | .assets | map(.name) | (index("ReerCodableMacros.tar.gz") != null and index("SHA256SUMS") != null and index("manifest.json") != null)' <<< "$releases" >/dev/null; then
+              echo "Already published: $tag"
+            else
+              matrix=$(jq -c --arg xcode "$xcode" --arg tag "$tag" '. + [{xcode: $xcode, tag: $tag}]' <<< "$matrix")
+            fi
+          done
+          {
+            echo "version=$version"
+            echo "commit=$commit"
+            echo "matrix=$matrix"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.matrix != '[]'
+    runs-on: macos-26
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: reers/ReerCodable
+          ref: ${{ needs.discover.outputs.commit }}
+          path: upstream
+          persist-credentials: false
+      - name: Build and verify distributed plugin
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+          UPSTREAM_VERSION: ${{ needs.discover.outputs.version }}
+          UPSTREAM_COMMIT: ${{ needs.discover.outputs.commit }}
+          RELEASE_TAG: ${{ matrix.tag }}
+          EXPECTED_XCODE: ${{ matrix.xcode }}
+        run: bash .github/scripts/build-macro.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.tag }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [discover, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for directory in artifacts/*; do
+            (cd "$directory" && sha256sum -c SHA256SUMS)
+            tag=$(jq -r .release_tag "$directory/manifest.json")
+            [[ "$tag" =~ ^macros-v?[0-9]+\.[0-9]+\.[0-9]+-xcode-[0-9.]+-arm64-flex-r1$ ]]
+            releases=$(gh api --paginate --slurp "repos/$REPOSITORY/releases?per_page=100")
+            if ! jq -e --arg tag "$tag" '.[][] | select(.tag_name == $tag)' <<< "$releases" >/dev/null; then
+              gh release create "$tag" --repo "$REPOSITORY" --target "$WORKFLOW_COMMIT" --draft --title "$tag" --notes 'Built from the upstream release with AutoFlexibleType enabled. See manifest.json for the source commit, exact toolchain and host requirements. CocoaPods integration is maintained separately.'
+            fi
+            # A failed upload leaves a draft; the next run safely retries it.
+            gh release upload "$tag" "$directory/ReerCodableMacros.tar.gz" "$directory/manifest.json" "$directory/SHA256SUMS" --repo "$REPOSITORY" --clobber
+            gh release edit "$tag" --repo "$REPOSITORY" --draft=false --latest=false
+          done
