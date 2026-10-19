@@ -49,6 +49,7 @@ module XcodeSupport
     releases = released_toolchains
     Dir.glob('/Applications/Xcode*.app').map { |path| File.realpath(path) }.uniq.map do |app|
       developer = File.join(app, 'Contents/Developer')
+      next unless File.executable?(File.join(developer, 'usr/bin/xcodebuild'))
       output = capture('xcodebuild', '-version', :env => { 'DEVELOPER_DIR' => developer })
       match = /\AXcode (\d+\.\d+(?:\.\d+)?)\nBuild version (\w+)\z/.match(output)
       next unless match && releases[match[1]] == match[2]

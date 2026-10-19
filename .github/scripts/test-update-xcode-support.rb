@@ -16,7 +16,7 @@ class XcodeSupportTest < Minitest::Test
   def test_uses_release_inventory_instead_of_paths_or_build_suffixes
     previous = ENV['RUNNER_LABEL']
     ENV['RUNNER_LABEL'] = 'xcode-27'
-    apps = %w[/Applications/Xcode_27.app /Applications/Xcode_27.1_Release_Candidate.app /Applications/Xcode_27.2_beta.app]
+    apps = %w[/Applications/Xcode_27.app /Applications/Xcode_27.1_Release_Candidate.app /Applications/Xcode_27.2_beta.app /Applications/Xcodes.app]
     capture = lambda do |*_, **options|
       path = options.fetch(:env).fetch('DEVELOPER_DIR')
       if path.include?('27.1')
@@ -29,9 +29,11 @@ class XcodeSupportTest < Minitest::Test
     end
     Dir.stub(:glob, apps) do
       File.stub(:realpath, ->(path) { path }) do
-        XcodeSupport.stub(:released_toolchains, { '27.0' => '27A266a', '27.1' => '27A9275' }) do
-          XcodeSupport.stub(:capture, capture) do
-            assert_equal %w[27.0 27.1], XcodeSupport.installed_xcodes.map { |entry| entry['version'] }
+        File.stub(:executable?, ->(path) { !path.include?('Xcodes.app') }) do
+          XcodeSupport.stub(:released_toolchains, { '27.0' => '27A266a', '27.1' => '27A9275' }) do
+            XcodeSupport.stub(:capture, capture) do
+              assert_equal %w[27.0 27.1], XcodeSupport.installed_xcodes.map { |entry| entry['version'] }
+            end
           end
         end
       end
