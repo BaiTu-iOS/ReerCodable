@@ -24,7 +24,7 @@ Release 标签：`macros-<上游版本>-xcode-<Xcode版本>-arm64-flex-r1`。`r1
 
 发布任务成功后自动调用 `Test macro Xcode compatibility`，也可手动指定已发布版本。无新制品、构建跳过时不会重复运行兼容测试。
 
-测试从公开 Releases 重新下载并校验宏，不重新编译宏。以三份制品 × Xcode 26.4.1、26.5、26.6、27.0、27.1 构成 15 组测试，使用真正的 .xcodeproj 编译独立运行时 framework 与消费方 target。每组执行 3 项 macOS XCTest（自动类型转换、编码往返、类型推断和默认值）以及 iOS Simulator Release 编译链接。Xcode 27.0 / 27.1 使用 `xcode-27` runner，其余使用 `macos-26`。
+测试从公开 Releases 重新下载并校验宏，不重新编译宏。以三份制品 × `.github/xcode-runners.json` 中的所有已验证 Xcode 构成测试矩阵，使用真正的 .xcodeproj 编译独立运行时 framework 与消费方 target。每组执行 3 项 macOS XCTest（自动类型转换、编码往返、类型推断和默认值）以及 iOS Simulator Release 编译链接。runner 和工具链路径也来自该清单；新增兼容版本自动加入后续发布的完整回归。
 
 Actions Summary 展示矩阵，Artifacts 保留日志、manifest、工具链信息和 xcresult 14 天。某组合失败不会取消其他组合。兼容测试发生在发布后，失败会使工作流失败，但不会撤回已有 Release；下载方仍应选择经过验证的精确工具链版本。未覆盖真机运行。
 
@@ -44,13 +44,13 @@ pod 'ReerCodable', :git => 'https://github.com/BaiTu-iOS/ReerCodable.git', :bran
 
 Pod 自身以及 Podfile 对应的用户 target 会获得宏加载参数；首次 Xcode 编译从本仓库 Releases 下载，校验 SHA-256、清单和架构后原子安装到构建目录。后续编译复用本地文件，切换 Xcode 或 ReerCodable 版本使用独立路径。首次下载需要访问 GitHub。`always_out_of_date` 用于每次检查实际工具链，避免 Xcode 的“未声明输出”警告。
 
-另有五组 CocoaPods 测试：每个 Xcode 执行真实 `pod install`、macOS XCTest 和 iOS Simulator Release 构建，验证自动准备及参数传递。测试从根目录 podspec 模板生成对应 Release 版本的 JSON 规格，固定宏清单记录的上游源码 commit，并检出该 commit 测试；不依赖 fork 的源码是否已同步。
+另有覆盖该清单的 CocoaPods 测试：每个 Xcode 执行真实 `pod install`、macOS XCTest 和 iOS Simulator Release 构建，验证自动准备及参数传递。测试从根目录 podspec 模板生成对应 Release 版本的 JSON 规格，固定宏清单记录的上游源码 commit，并检出该 commit 测试；不依赖 fork 的源码是否已同步。
 
 ## 自动发布到 baitu-specs
 
-15 组兼容测试与 5 组 CocoaPods 测试全部成功后，将实际测试的 `ReerCodable.podspec.json` 和 `.sha256` 上传到该版本的 Xcode 26.6 宏 Release。已有规格不可覆盖；同版本不同内容会报错。宏已构建但规格尚未通过测试时，每日检查会继续重试验证，已完整发布的版本跳过。
+兼容矩阵与 CocoaPods 测试全部成功后，将实际测试的 `ReerCodable.podspec.json` 和 `.sha256` 上传到该版本的 Xcode 26.6 宏 Release。常规版本发布仍拒绝覆盖不同内容；下面的新 Xcode 工作流仅可追加经过验证的精确兼容映射。宏已构建但规格尚未通过测试时，每日检查会继续重试验证，已完整发布的版本跳过。
 
-[BaiTu-iOS/baitu-specs](https://github.com/BaiTu-iOS/baitu-specs) 每小时第 43 分钟同步这些通过验证的规格，不需要跨仓库写入 token。同步不会自动升级业务工程的 Podfile.lock。
+[BaiTu-iOS/baitu-specs](https://github.com/BaiTu-iOS/baitu-specs) 每小时第 43 分钟同步这些通过验证的规格，不需要跨仓库写入 token。已有规格仅允许追加兼容映射，源码 commit、版本、原映射、下载和校验逻辑发生变化都会拒绝同步。同步不会自动升级业务工程的 Podfile.lock。
 
 ```ruby
 source 'https://github.com/BaiTu-iOS/baitu-specs.git'
@@ -65,3 +65,15 @@ pod 'ReerCodable', '1.8.1'
 ### 1.8.1 的 Xcode 27.1 规格修订
 
 2026-10-19 经维护者授权覆盖 1.8.1 的规格及其 SHA-256，并同步 baitu-specs 的同版本规格；仅新增 27.1 → 26.6 兼容映射，源码 commit、宏二进制和其校验文件保持不变。常规自动发布仍禁止覆盖不同内容。已安装 1.8.1 的项目需刷新 Specs 缓存并重新安装依赖，旧 Pods 工程不会随远端规格更新自动改变。
+
+## 自动发现新 Xcode
+
+`Discover and verify new Xcode versions` 每天北京时间 10:37 扫描 `macos-26` 和 `xcode-27` runner 实际安装的 Xcode，按工具链输出的版本和 build number 去重，跳过 Beta/RC 路径及带测试版后缀的 build。默认只验证比当前支持上限更高的版本；手动运行可填写 `xcode`（如 `27.1`）复验已有版本。
+
+每个新 Xcode 都使用现有 26.6 宏，针对所有已发布且具有完整规格/校验文件的版本执行：校验下载规格 → 检出规格锁定的上游 commit → 生成仅追加该 Xcode 映射的候选规格 → 真实 `pod install` → 三项 macOS XCTest → iOS Simulator Release 编译链接。任何失败都会阻止本轮发布，日志和 xcresult 保留 14 天。
+
+所有 runner 验证通过后，发布 job 再核对 main 和已发布版本集合未变化，只覆盖通过验证的规格及 SHA-256，最后提交 podspec 和 Xcode 测试清单。宏二进制及原有版本映射不变。重复运行没有新映射时不上传、不提交；中断后模板未更新会在下一轮重新验证。Release 的两个附件无法原子替换，下载方必须检查 SHA-256；同步恰好遇到更新窗口会失败，下一小时重试。
+
+该流程不需要新增 PAT：ReerCodable 使用本仓库 `GITHUB_TOKEN`，Specs 仓库继续定时拉取。`GITHUB_TOKEN` 提交不会再次触发普通 push CI，所以发布前验证全部在当前工作流执行。
+
+边界：只支持被监控 runner 已提供的工具链，不自动下载 Apple 尚未在 runner 提供的 Xcode；新增 runner 大版本时需调整工作流及脚本中的 runner 列表。现有宏不兼容时会明确失败，不会自动重编译或放行未经验证的版本。业务项目仍需刷新 Specs/缓存并重新安装依赖，Actions 不会远程修改开发机。

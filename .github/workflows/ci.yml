@@ -15,6 +15,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tooling:
+    name: Macro publication guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: gem install cocoapods-core minitest --user-install --no-document
+      - run: |
+          ruby .github/scripts/test-render-podspec.rb
+          ruby .github/scripts/test-spec-compatibility.rb
+          ruby .github/scripts/test-update-xcode-support.rb
+
   macOS:
     if: github.event_name != 'pull_request' || !contains(github.event.pull_request.title, '[skip ci]')
     name: macOS (Swift ${{ matrix.swift }})

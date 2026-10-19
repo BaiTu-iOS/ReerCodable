@@ -18,17 +18,29 @@ permissions:
   contents: read
 
 jobs:
+  toolchains:
+    runs-on: ubuntu-latest
+    outputs:
+      consumers: ${{ steps.matrix.outputs.consumers }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - id: matrix
+        run: echo "consumers=$(jq -c . .github/xcode-runners.json)" >> "$GITHUB_OUTPUT"
+
   integration:
-    name: Macro ${{ matrix.producer }} on Xcode ${{ matrix.consumer }}
-    runs-on: ${{ startsWith(matrix.consumer, '27.') && 'xcode-27' || 'macos-26' }}
+    needs: toolchains
+    name: Macro ${{ matrix.producer }} on Xcode ${{ matrix.consumer.version }}
+    runs-on: ${{ matrix.consumer.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         producer: ['26.4.1', '26.5', '26.6']
-        consumer: ['26.4.1', '26.5', '26.6', '27.0', '27.1']
+        consumer: ${{ fromJSON(needs.toolchains.outputs.consumers) }}
     env:
-      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.consumer }}.app/Contents/Developer
+      DEVELOPER_DIR: ${{ matrix.consumer.developer_dir }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -66,26 +78,27 @@ jobs:
         working-directory: .github/integration
         env:
           PRODUCER: ${{ matrix.producer }}
-          CONSUMER: ${{ matrix.consumer }}
+          CONSUMER: ${{ matrix.consumer.version }}
         run: bash ../scripts/test-xcode-integration.sh
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: compatibility-${{ matrix.producer }}-on-${{ matrix.consumer }}
+          name: compatibility-${{ matrix.producer }}-on-${{ matrix.consumer.version }}
           path: .github/integration/results
           if-no-files-found: warn
           retention-days: 14
 
   cocoapods:
-    name: CocoaPods on Xcode ${{ matrix.xcode }}
-    runs-on: ${{ startsWith(matrix.xcode, '27.') && 'xcode-27' || 'macos-26' }}
+    needs: toolchains
+    name: CocoaPods on Xcode ${{ matrix.consumer.version }}
+    runs-on: ${{ matrix.consumer.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        xcode: ['26.4.1', '26.5', '26.6', '27.0', '27.1']
+        consumer: ${{ fromJSON(needs.toolchains.outputs.consumers) }}
     env:
-      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+      DEVELOPER_DIR: ${{ matrix.consumer.developer_dir }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -135,13 +148,16 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: cocoapods-${{ matrix.xcode }}
+          name: cocoapods-${{ matrix.consumer.version }}
           path: .github/cocoapods/results
           retention-days: 14
 
   publish-spec:
     needs: [integration, cocoapods]
     runs-on: ubuntu-latest
+    concurrency:
+      group: reercodable-spec-publication
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:

@@ -1,0 +1,79 @@
+name: Discover and verify new Xcode versions
+
+on:
+  schedule:
+    - cron: '37 2 * * *' # 每天北京时间 10:37
+  workflow_dispatch:
+    inputs:
+      xcode:
+        description: '指定已安装版本复验；留空只检测新版本'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: discover-xcode-support
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Discover Xcode on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, xcode-27]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install integration tools
+        run: |
+          command -v xcodegen || brew install xcodegen
+          command -v pod || brew install cocoapods
+          ruby -e 'require "cocoapods-core"' || gem install cocoapods-core --user-install --no-document
+      - name: Test compatibility revision guard
+        run: |
+          ruby .github/scripts/test-render-podspec.rb
+          ruby .github/scripts/test-spec-compatibility.rb
+          ruby .github/scripts/test-update-xcode-support.rb
+      - name: Discover and test available release toolchains
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+          REQUESTED_XCODE: ${{ inputs.xcode }}
+        run: ruby .github/scripts/update-xcode-support.rb verify "$RUNNER_TEMP/xcode-support"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: xcode-support-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/xcode-support/report.json
+            ${{ runner.temp }}/xcode-support/**/*.log
+            ${{ runner.temp }}/xcode-support/**/Tests.xcresult
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: reercodable-spec-publication
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: xcode-support-*
+          path: verified
+      - name: Publish additive verified compatibility updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_XCODE: ${{ inputs.xcode }}
+        run: ruby .github/scripts/update-xcode-support.rb publish verified
