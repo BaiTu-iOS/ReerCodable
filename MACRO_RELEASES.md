@@ -24,7 +24,7 @@ Release 标签：`macros-<上游版本>-xcode-<Xcode版本>-arm64-flex-r1`。`r1
 
 发布任务成功后自动调用 `Test macro Xcode compatibility`，也可手动指定已发布版本。无新制品、构建跳过时不会重复运行兼容测试。
 
-测试从公开 Releases 重新下载并校验宏，不重新编译宏。以三份制品 × Xcode 26.4.1、26.5、26.6、27.0 构成 12 组测试，使用真正的 .xcodeproj 编译独立运行时 framework 与消费方 target。每组执行 3 项 macOS XCTest（自动类型转换、编码往返、类型推断和默认值）以及 iOS Simulator Release 编译链接。Xcode 27.0 使用 `xcode-27` runner，其余使用 `macos-26`。
+测试从公开 Releases 重新下载并校验宏，不重新编译宏。以三份制品 × Xcode 26.4.1、26.5、26.6、27.0、27.1 构成 15 组测试，使用真正的 .xcodeproj 编译独立运行时 framework 与消费方 target。每组执行 3 项 macOS XCTest（自动类型转换、编码往返、类型推断和默认值）以及 iOS Simulator Release 编译链接。Xcode 27.0 / 27.1 使用 `xcode-27` runner，其余使用 `macos-26`。
 
 Actions Summary 展示矩阵，Artifacts 保留日志、manifest、工具链信息和 xcresult 14 天。某组合失败不会取消其他组合。兼容测试发生在发布后，失败会使工作流失败，但不会撤回已有 Release；下载方仍应选择经过验证的精确工具链版本。未覆盖真机运行。
 
@@ -32,7 +32,7 @@ Actions Summary 展示矩阵，Artifacts 保留日志、manifest、工具链信�
 
 ## CocoaPods（本 fork 维护）
 
-根目录恢复了 ReerCodable 1.8.1 的 podspec。当前适配最低 iOS 15 / macOS 12，开发机须为 Apple Silicon；支持 Xcode 26.4.1、26.5、26.6、27.0。前三者下载对应工具链制品，27.0 使用经过兼容测试的 26.6 制品；其他版本明确报错。默认开启 AutoFlexibleType，无需在业务字段添加 @FlexibleType。
+根目录恢复了 ReerCodable 1.8.1 的 podspec。当前适配最低 iOS 15 / macOS 12，开发机须为 Apple Silicon；支持 Xcode 26.4.1、26.5、26.6、27.0、27.1。前三者下载对应工具链制品，27.0 / 27.1 使用经过兼容测试的 26.6 制品；其他版本明确报错。默认开启 AutoFlexibleType，无需在业务字段添加 @FlexibleType。
 
 Podfile 可以直接指定本 fork：
 
@@ -44,11 +44,11 @@ pod 'ReerCodable', :git => 'https://github.com/BaiTu-iOS/ReerCodable.git', :bran
 
 Pod 自身以及 Podfile 对应的用户 target 会获得宏加载参数；首次 Xcode 编译从本仓库 Releases 下载，校验 SHA-256、清单和架构后原子安装到构建目录。后续编译复用本地文件，切换 Xcode 或 ReerCodable 版本使用独立路径。首次下载需要访问 GitHub。`always_out_of_date` 用于每次检查实际工具链，避免 Xcode 的“未声明输出”警告。
 
-另有四组 CocoaPods 测试：每个 Xcode 执行真实 `pod install`、macOS XCTest 和 iOS Simulator Release 构建，验证自动准备及参数传递。测试从根目录 podspec 模板生成对应 Release 版本的 JSON 规格，固定宏清单记录的上游源码 commit，并检出该 commit 测试；不依赖 fork 的源码是否已同步。
+另有五组 CocoaPods 测试：每个 Xcode 执行真实 `pod install`、macOS XCTest 和 iOS Simulator Release 构建，验证自动准备及参数传递。测试从根目录 podspec 模板生成对应 Release 版本的 JSON 规格，固定宏清单记录的上游源码 commit，并检出该 commit 测试；不依赖 fork 的源码是否已同步。
 
 ## 自动发布到 baitu-specs
 
-12 组兼容测试与 4 组 CocoaPods 测试全部成功后，将实际测试的 `ReerCodable.podspec.json` 和 `.sha256` 上传到该版本的 Xcode 26.6 宏 Release。已有规格不可覆盖；同版本不同内容会报错。宏已构建但规格尚未通过测试时，每日检查会继续重试验证，已完整发布的版本跳过。
+15 组兼容测试与 5 组 CocoaPods 测试全部成功后，将实际测试的 `ReerCodable.podspec.json` 和 `.sha256` 上传到该版本的 Xcode 26.6 宏 Release。已有规格不可覆盖；同版本不同内容会报错。宏已构建但规格尚未通过测试时，每日检查会继续重试验证，已完整发布的版本跳过。
 
 [BaiTu-iOS/baitu-specs](https://github.com/BaiTu-iOS/baitu-specs) 每小时第 43 分钟同步这些通过验证的规格，不需要跨仓库写入 token。同步不会自动升级业务工程的 Podfile.lock。
 
@@ -61,3 +61,7 @@ pod 'ReerCodable', '1.8.1'
 首次使用执行 `pod install --repo-update`；未来升级版本主动运行 `pod update ReerCodable`。
 
 限制：其他源码 Pod 在自己的代码中使用宏时，也需要获得加载参数；CocoaPods 不会把依赖 Pod 的 pod_target_xcconfig 自动传给它。这部分仍由 cocoapods-publish 的依赖检测/参数注入集成负责，本仓库没有修改那个插件。
+
+### 1.8.1 的 Xcode 27.1 规格修订
+
+2026-10-19 经维护者授权覆盖 1.8.1 的规格及其 SHA-256，并同步 baitu-specs 的同版本规格；仅新增 27.1 → 26.6 兼容映射，源码 commit、宏二进制和其校验文件保持不变。常规自动发布仍禁止覆盖不同内容。已安装 1.8.1 的项目需刷新 Specs 缓存并重新安装依赖，旧 Pods 工程不会随远端规格更新自动改变。
