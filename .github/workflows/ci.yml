@@ -20,7 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: gem install cocoapods-core minitest --user-install --no-document
+      - run: |
+          gem install cocoapods-core --user-install --no-document
+          gem install minitest -v '~> 5.0' --user-install --no-document
       - run: |
           ruby .github/scripts/test-render-podspec.rb
           ruby .github/scripts/test-spec-compatibility.rb

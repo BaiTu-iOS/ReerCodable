@@ -35,6 +35,7 @@ jobs:
           command -v xcodegen || brew install xcodegen
           command -v pod || brew install cocoapods
           ruby -e 'require "cocoapods-core"' || gem install cocoapods-core --user-install --no-document
+          gem install minitest -v '~> 5.0' --user-install --no-document
       - name: Test compatibility revision guard
         run: |
           ruby .github/scripts/test-render-podspec.rb

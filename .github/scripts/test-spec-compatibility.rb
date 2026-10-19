@@ -1,4 +1,5 @@
 # Created by yuxilong on 2026/10/19.
+gem 'minitest', '~> 5.0'
 require 'minitest/autorun'
 require 'open3'
 require 'rbconfig'

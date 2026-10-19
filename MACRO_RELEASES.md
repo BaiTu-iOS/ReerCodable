@@ -68,7 +68,7 @@ pod 'ReerCodable', '1.8.1'
 
 ## 自动发现新 Xcode
 
-`Discover and verify new Xcode versions` 每天北京时间 10:37 扫描 `macos-26` 和 `xcode-27` runner 实际安装的 Xcode，按工具链输出的版本和 build number 去重，跳过 Beta/RC 路径及带测试版后缀的 build。默认只验证比当前支持上限更高的版本；手动运行可填写 `xcode`（如 `27.1`）复验已有版本。
+`Discover and verify new Xcode versions` 每天北京时间 10:37 扫描 `macos-26` 和 `xcode-27` runner 实际安装的 Xcode，将版本和 build number 与 GitHub 官方 `actions/runner-images` 软件清单中的正式版条目核对，排除标为 Beta/RC 的版本。目录名和 build 后缀不能判断发布状态（例如正式版 27.1 仍可能安装在 `Release_Candidate` 目录）。默认只验证比当前支持上限更高的版本；手动运行可填写 `xcode`（如 `27.1`）复验已有版本。
 
 每个新 Xcode 都使用现有 26.6 宏，针对所有已发布且具有完整规格/校验文件的版本执行：校验下载规格 → 检出规格锁定的上游 commit → 生成仅追加该 Xcode 映射的候选规格 → 真实 `pod install` → 三项 macOS XCTest → iOS Simulator Release 编译链接。任何失败都会阻止本轮发布，日志和 xcresult 保留 14 天。
 

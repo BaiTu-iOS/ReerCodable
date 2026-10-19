@@ -46,14 +46,23 @@ module XcodeSupport
   end
 
   def self.installed_xcodes
+    releases = released_toolchains
     Dir.glob('/Applications/Xcode*.app').map { |path| File.realpath(path) }.uniq.map do |app|
-      next if app.match?(/beta|release.?candidate|(?:^|[^a-z])rc(?:[^a-z]|$)/i)
       developer = File.join(app, 'Contents/Developer')
       output = capture('xcodebuild', '-version', :env => { 'DEVELOPER_DIR' => developer })
-      match = /\AXcode (\d+\.\d+(?:\.\d+)?)\nBuild version (\d+[A-Z]\d+)\z/.match(output)
-      next unless match # Beta builds ending in letters are deliberately excluded.
+      match = /\AXcode (\d+\.\d+(?:\.\d+)?)\nBuild version (\w+)\z/.match(output)
+      next unless match && releases[match[1]] == match[2]
       { 'version' => match[1], 'runner' => ENV.fetch('RUNNER_LABEL'), 'developer_dir' => developer, 'build' => match[2] }
     end.compact.uniq { |entry| entry['version'] }.sort_by { |entry| Gem::Version.new(entry['version']) }
+  end
+
+  def self.released_toolchains
+    image = ENV.fetch('RUNNER_LABEL')
+    readme = capture('gh', 'api', "repos/actions/runner-images/contents/images/macos/#{image}-arm64-Readme.md", '-H', 'Accept: application/vnd.github.raw+json')
+    # Official image metadata distinguishes GA from beta; paths and build suffixes do not.
+    releases = readme.scan(/^\|\s*(\d+\.\d+(?:\.\d+)?)(?:\s+\(default\))?\s*\|\s*(\w+)\s*\|\s*\/Applications\/Xcode/).to_h
+    raise 'No release Xcode entries in official runner inventory' if releases.empty?
+    releases
   end
 
   def self.released_tags
@@ -69,6 +78,7 @@ module XcodeSupport
     raise 'Unrecognized runner' unless RUNNERS.include?(ENV.fetch('RUNNER_LABEL'))
     FileUtils.mkdir_p(directory)
     installed = installed_xcodes
+    raise 'No installed Xcode matches the official release inventory' if installed.empty?
     template = File.read(File.join(ROOT, 'ReerCodable.podspec'))
     known = SpecCompatibility.versions(template)
     candidates = installed.select do |entry|
