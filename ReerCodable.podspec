@@ -34,6 +34,7 @@ xcode_version=$(xcodebuild -version | awk 'NR == 1 {print $2}')
 case "$xcode_version" in
   26.4.1|26.5|26.6) producer="$xcode_version" ;;
   27.0|27.1) producer=26.6 ;; # Explicitly verified compatibility mapping.
+  27.2) producer=26.6 ;; # Automatically verified compatibility mapping.
   *) echo "error: No verified ReerCodable macro for Xcode $xcode_version" >&2; exit 1 ;;
 esac
 plugin_dir="${PODS_BUILD_DIR}/ReerCodable/#{s.version}/${XCODE_VERSION_ACTUAL}"
